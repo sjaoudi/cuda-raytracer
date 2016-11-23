@@ -23,35 +23,22 @@
 #define rnd(x) (x * rand() / RAND_MAX)
 #define INF 2e10f
 
-struct Sphere {
-  float r, b, g;
-  float radius;
-  float x, y, z;
-  __device__ float hit(float ox, float oy, float *n) {
-    float dx = ox - x;
-    float dy = oy - y;
-    if (dx * dx + dy * dy < radius * radius) {
-      float dz = sqrtf(radius * radius - dx * dx - dy * dy);
-      *n = dz / sqrtf(radius * radius);
-      return dz + z;
-    }
-    return -INF;
-  }
-};
-
 struct Point {
   float x, y, z;
-  __device__ Point crossProduct(Point p2) {
+  __device__ Point () {}
+  __device__ Point (float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+
+  __device__ Point crossProduct(Point p) {
     Point result;
-    result.x = (y*p2.z - p2.y*z);
-    result.y = (p2.x*z - x*p2.z);
-    result.z = (x*p2.y - p2.x*y);
+    result.x = (y*p.z - p.y*z);
+    result.y = (p.x*z - x*p.z);
+    result.z = (x*p.y - p.x*y);
 
     return result;
   }
 };
 
-Point operator-(const Point &p1, const Point &p2) {
+__device__ Point operator-(const Point &p1, const Point &p2) {
   Point p3;
   p3.x = p1.x - p2.x;
   p3.y = p1.y - p2.y;
@@ -60,9 +47,17 @@ Point operator-(const Point &p1, const Point &p2) {
   return p3;
 }
 
-float operator*(const Point &p1, const Point &p2) {
-  float result = 0;
-  result = p1.x*p2.x + p1.y*p2.y + p1.z*p2.z;
+__device__ Point operator+(const Point &p1, const Point &p2) {
+  Point p3;
+  p3.x = p1.x + p2.x;
+  p3.y = p1.y + p2.y;
+  p3.z = p1.z + p2.z;
+
+  return p3;
+}
+
+__device__ float operator*(const Point &p1, const Point &p2) {
+  float result = p1.x*p2.x + p1.y*p2.y + p1.z*p2.z;
   return result;
 }
 
@@ -74,28 +69,22 @@ struct Triangle {
     Point cross = (p2 - p1).crossProduct(p3 - p1);
     Point normal = (pt2 - pt1).crossProduct(pt3 - pt1);
     float dot = cross * normal;
-    return dot > 0;
+
+    return dot < 0;
+
   }
-  __device__ bool contains(float ox, float oy) {
-    Point q;
-    q.x = ox;
-    q.y = oy;
+  __device__ bool contains(Point q) {
 
     return (leftOf(pt2, pt1, q) && leftOf(pt3, pt2, q) && leftOf(pt1, pt3, q));
   }
   __device__ float hit(float ox, float oy, float *n) {
 
-
-    if (!contains(ox, oy)) {
-      return -INF;
-    }
-
     Point normal = (pt2 - pt1).crossProduct(pt3 - pt1);
-    //*n = normal;
 
     Point o;
     o.x = ox;
     o.y = oy;
+    o.z = 0;
 
     Point d;
     d.x = 0;
@@ -104,14 +93,20 @@ struct Triangle {
 
     float t = (normal * (pt1 - o)) / (d * normal);
 
+    Point direction = Point(0, 0, -t);
+    Point p = o + direction;
+
+    if (!contains(p)) {
+      return -INF;
+    }
+
     return t;
 
   }
 };
 
-#define SPHERES 20
-
-__constant__ Sphere s[SPHERES];
+#define TRIANGLES 1
+__constant__ Triangle t[TRIANGLES];
 
 __global__ void kernel(unsigned char *ptr) {
   // map from threadIdx/BlockIdx to pixel position
@@ -123,15 +118,20 @@ __global__ void kernel(unsigned char *ptr) {
 
   float r = 0, g = 0, b = 0;
   float maxz = -INF;
-  for (int i = 0; i < SPHERES; i++) {
+  for (int i = 0; i < TRIANGLES; i++) {
     float n;
-    float t = s[i].hit(ox, oy, &n);
-    if (t > maxz) {
-      float fscale = n;
-      r = s[i].r * fscale;
-      g = s[i].g * fscale;
-      b = s[i].b * fscale;
-      maxz = t;
+    float htime = t[i].hit(ox, oy, &n);
+    if ((ox == 0) && (oy == 0)) {
+      printf("htime: %f\n", htime);
+      printf("-INF: %f\n", -INF);
+      printf("normal: %f\n", (t[i].pt2 - t[i].pt1).crossProduct(t[i].pt3 - t[i].pt1).z);
+    }
+    if (htime > maxz) {
+      float fscale = 1;
+      r = t[i].r * fscale;
+      g = t[i].g * fscale;
+      b = t[i].b * fscale;
+      maxz = htime;
     }
   }
 
@@ -158,20 +158,29 @@ int main(void) {
   // allocate memory on the GPU for the output bitmap
   HANDLE_ERROR(cudaMalloc((void **)&dev_bitmap, bitmap.image_size()));
 
-  // allocate temp memory, initialize it, copy to constant
-  // memory on the GPU, then free our temp memory
-  Sphere *temp_s = (Sphere *)malloc(sizeof(Sphere) * SPHERES);
-  for (int i = 0; i < SPHERES; i++) {
-    temp_s[i].r = rnd(1.0f);
-    temp_s[i].g = rnd(1.0f);
-    temp_s[i].b = rnd(1.0f);
-    temp_s[i].x = rnd(1000.0f) - 500;
-    temp_s[i].y = rnd(1000.0f) - 500;
-    temp_s[i].z = rnd(1000.0f) - 500;
-    temp_s[i].radius = rnd(100.0f) + 20;
+  Triangle *temp_tri = (Triangle *)malloc(sizeof(Triangle) * TRIANGLES);
+
+  for (int i = 0; i < TRIANGLES; i++) {
+    temp_tri[i].r = rnd(1.0f);
+    temp_tri[i].g = rnd(1.0f);
+    temp_tri[i].b = rnd(1.0f);
+
+    temp_tri[i].pt1.x = -250;
+    temp_tri[i].pt1.y = -250;
+    temp_tri[i].pt1.z = 0;
+
+    temp_tri[i].pt2.x = 250;
+    temp_tri[i].pt2.y = -250;
+    temp_tri[i].pt2.z = 0;
+
+    temp_tri[i].pt3.x = 0;
+    temp_tri[i].pt3.y = 250;
+    temp_tri[i].pt3.z = 0;
   }
-  HANDLE_ERROR(cudaMemcpyToSymbol(s, temp_s, sizeof(Sphere) * SPHERES));
-  free(temp_s);
+
+  //HANDLE_ERROR(cudaMemcpyToSymbol(s, temp_s, sizeof(Sphere) * SPHERES));
+  HANDLE_ERROR(cudaMemcpyToSymbol(t, temp_tri, sizeof(Triangle) * TRIANGLES));
+  free(temp_tri);
 
   // generate a bitmap from our sphere data
   dim3 grids(DIM / 16, DIM / 16);
