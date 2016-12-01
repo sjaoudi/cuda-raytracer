@@ -22,14 +22,16 @@
 
 #define rnd(x) (x * rand() / RAND_MAX)
 #define INF 2e10f
+#define TRIANGLES 1
+#define LIGHTS 1
 
-struct Point {
+struct vec3 {
   float x, y, z;
-  __device__ Point () {}
-  __device__ Point (float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+  __device__ vec3 () {}
+  __device__ vec3 (float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 
-  __device__ Point crossProduct(Point p) {
-    Point result;
+  __device__ vec3 crossProduct(vec3 p) {
+    vec3 result;
     result.x = (y*p.z - p.y*z);
     result.y = (p.x*z - x*p.z);
     result.z = (x*p.y - p.x*y);
@@ -38,8 +40,8 @@ struct Point {
   }
 };
 
-__device__ Point operator-(const Point &p1, const Point &p2) {
-  Point p3;
+__device__ vec3 operator-(const vec3 &p1, const vec3 &p2) {
+  vec3 p3;
   p3.x = p1.x - p2.x;
   p3.y = p1.y - p2.y;
   p3.z = p1.z - p2.z;
@@ -47,8 +49,8 @@ __device__ Point operator-(const Point &p1, const Point &p2) {
   return p3;
 }
 
-__device__ Point operator+(const Point &p1, const Point &p2) {
-  Point p3;
+__device__ vec3 operator+(const vec3 &p1, const vec3 &p2) {
+  vec3 p3;
   p3.x = p1.x + p2.x;
   p3.y = p1.y + p2.y;
   p3.z = p1.z + p2.z;
@@ -56,45 +58,66 @@ __device__ Point operator+(const Point &p1, const Point &p2) {
   return p3;
 }
 
-__device__ float operator*(const Point &p1, const Point &p2) {
+__device__ float operator*(const vec3 &p1, const vec3 &p2) {
   float result = p1.x*p2.x + p1.y*p2.y + p1.z*p2.z;
   return result;
 }
 
+__device__ vec3 operator*(const vec3 &p, const float scale) {
+  vec3 result = vec3(p.x * scale, p.y * scale, p.z * scale);
+  return result;
+}
+
+__device__ vec3 operator/(const vec3 &p, const float scale) {
+  vec3 result = vec3(p.x / scale, p.y / scale, p.z / scale);
+  return result;
+}
+
+struct Ray {
+  vec3 origin;
+  vec3 direction;
+};
+
+struct Light {
+  vec3 position;
+  float intensity;
+};
+
+struct Material {
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+
 struct Triangle {
   float r, b, g;
-  Point pt1, pt2, pt3;
-  __device__ bool leftOf(Point p1, Point p2, Point p3) {
+  vec3 pt1, pt2, pt3;
+  Material material;
 
-    Point cross = (p2 - p1).crossProduct(p3 - p1);
-    Point normal = (pt2 - pt1).crossProduct(pt3 - pt1);
+  __device__ bool leftOf(vec3 p1, vec3 p2, vec3 p3) {
+
+    vec3 cross = (p2 - p1).crossProduct(p3 - p1);
+    vec3 normal = (pt2 - pt1).crossProduct(pt3 - pt1);
     float dot = cross * normal;
 
     return dot < 0;
 
   }
-  __device__ bool contains(Point q) {
+  __device__ bool contains(vec3 q) {
 
     return (leftOf(pt2, pt1, q) && leftOf(pt3, pt2, q) && leftOf(pt1, pt3, q));
   }
-  __device__ float hit(float ox, float oy, float *n) {
+  __device__ float hit(Ray ray) {
 
-    Point normal = (pt2 - pt1).crossProduct(pt3 - pt1);
+    vec3 normal = (pt2 - pt1).crossProduct(pt3 - pt1);
 
-    Point o;
-    o.x = ox;
-    o.y = oy;
-    o.z = 0;
-
-    Point d;
-    d.x = 0;
-    d.y = 0;
-    d.z = -1;
+    vec3 o = ray.origin;
+    vec3 d = ray.direction;
 
     float t = (normal * (pt1 - o)) / (d * normal);
 
-    Point direction = Point(0, 0, -t);
-    Point p = o + direction;
+    vec3 direction = vec3(0, 0, -t);
+    vec3 p = o + direction;
 
     if (!contains(p)) {
       return -INF;
@@ -105,8 +128,123 @@ struct Triangle {
   }
 };
 
-#define TRIANGLES 1
+struct view_s {
+  vec3 eye; // eye position
+
+  vec3 origin; // origin of image plane
+
+  vec3 horiz; // vector from origin bottom left to
+  // bottom right side of image plane
+
+  vec3 vert; // vector from origin bottom to
+  // top left side of image plane
+
+  vec3 background; // background rgb color in 0-1 range
+
+  int nrows, ncols; // for output image
+};
+
+struct scene_s {
+  view_s view;
+  float ambient;
+};
+
+struct Hit {
+  float time;
+  int shapeID;
+};
+
 __constant__ Triangle t[TRIANGLES];
+__constant__ Light l[LIGHTS];
+__constant__ scene_s scene;
+
+
+
+__device__ vec3 convertToWorld(int col, int row) {
+  float pixelwidth = float(scene.view.horiz.x)/scene.view.ncols;
+  float pixelheight = float(scene.view.vert.y)/scene.view.nrows;
+  // float pixelwidth = float(10)/m_scene.view.ncols;
+  // float pixelheight = float(10)/m_scene.view.nrows;
+
+  float worldx = scene.view.origin.x + col*pixelwidth;
+  float worldy = -scene.view.origin.y - row*pixelheight;
+  float worldz = scene.view.origin.z;
+
+  return vec3(worldx, worldy, worldz);
+}
+
+__device__ Ray makeRay(int col, int row) {
+  vec3 p = convertToWorld(col, row);
+  Ray ray;
+  ray.origin = scene.view.eye;
+  ray.direction = p - scene.view.eye;
+
+  return ray;
+}
+
+__device__ Hit findClosest(Ray ray) {
+  Hit closest;
+  closest.shapeID = -1;
+  closest.time = 0;
+
+  for (int i = 0; i < TRIANGLES; i++) {
+    float time = t[i].hit(ray);
+    if (time > 0.001) {
+      if (closest.shapeID == -1 || time < closest.time) {
+        closest.shapeID = i;
+        closest.time = time;
+      }
+    }
+  }
+
+  return closest;
+}
+
+__device__ vec3 doLighting(Ray ray, Triangle triangle) {
+
+  vec3 color = scene.ambient * triangle.material.ambient;
+
+  for (int i = 0; i < LIGHTS; i++) {
+    Light L = lights_array[i];
+  }
+}
+
+__device__ vec3 traceRay(Ray ray) {
+  Hit closest = findClosest(ray);
+  vec3 background = scene.view.background;
+
+  vec3 color = convertColor(background);
+
+  if (closest.shapeID != -1) {
+    color = doLighting(ray, t[closest.shapeID]);
+  }
+
+  return color;
+}
+
+_
+
+__device__ vec3 convertColor(vec3 color) {
+  float cmax = color.x;
+  vec3 scaled;
+  int r, g, b;
+
+  if (color.y > cmax) { cmax = color.y; }
+  if (color.z > cmax) { cmax = color.z; }
+  if (cmax > 1) {
+    scaled = color / cmax;
+  }
+  else {
+    scaled = color;
+  }
+
+  vec3 result;
+  result.x = (int)(255 * scaled.x);
+  result.y = (int)(255 * scaled.y);
+  result.z = (int)(255 * scaled.z);
+
+  return result;
+}
 
 __global__ void kernel(unsigned char *ptr) {
   // map from threadIdx/BlockIdx to pixel position
@@ -116,28 +254,12 @@ __global__ void kernel(unsigned char *ptr) {
   float ox = (x - DIM / 2);
   float oy = (y - DIM / 2);
 
-  float r = 0, g = 0, b = 0;
-  float maxz = -INF;
-  for (int i = 0; i < TRIANGLES; i++) {
-    float n;
-    float htime = t[i].hit(ox, oy, &n);
-    if ((ox == 0) && (oy == 0)) {
-      printf("htime: %f\n", htime);
-      printf("-INF: %f\n", -INF);
-      printf("normal: %f\n", (t[i].pt2 - t[i].pt1).crossProduct(t[i].pt3 - t[i].pt1).z);
-    }
-    if (htime > maxz) {
-      float fscale = 1;
-      r = t[i].r * fscale;
-      g = t[i].g * fscale;
-      b = t[i].b * fscale;
-      maxz = htime;
-    }
-  }
+  Ray ray = makeRay(x, y);
+  vec3 color =  traceRay(ray);
 
-  ptr[offset * 4 + 0] = (int)(r * 255);
-  ptr[offset * 4 + 1] = (int)(g * 255);
-  ptr[offset * 4 + 2] = (int)(b * 255);
+  ptr[offset * 4 + 0] = (int)(color.x);
+  ptr[offset * 4 + 1] = (int)(color.y);
+  ptr[offset * 4 + 2] = (int)(color.z);
   ptr[offset * 4 + 3] = 255;
 }
 
@@ -159,6 +281,34 @@ int main(void) {
   HANDLE_ERROR(cudaMalloc((void **)&dev_bitmap, bitmap.image_size()));
 
   Triangle *temp_tri = (Triangle *)malloc(sizeof(Triangle) * TRIANGLES);
+  Light *lights_array = (Light * )malloc(sizeof(Light) * LIGHTS);
+
+  scene_s *temp_scene = new scene_s;
+
+  temp_scene->view.eye.x = 0;
+  temp_scene->view.eye.y = 0;
+  temp_scene->view.eye.z = 15;
+
+  temp_scene->view.origin.x = -5;
+  temp_scene->view.origin.y = -5;
+  temp_scene->view.origin.z = 8;
+
+  temp_scene->view.horiz.x = 0;
+  temp_scene->view.horiz.y = 0;
+  temp_scene->view.horiz.z = 10;
+
+  temp_scene->view.vert.x = 0;
+  temp_scene->view.vert.y = 10;
+  temp_scene->view.vert.z = 0;
+
+  temp_scene->view.background.x = 0;
+  temp_scene->view.background.y = 0;
+  temp_scene->view.background.z = 0;
+
+  temp_scene->view.nrows = DIM;
+  temp_scene->view.ncols = DIM;
+
+  temp_scene->ambient = 0.1;
 
   for (int i = 0; i < TRIANGLES; i++) {
     temp_tri[i].r = rnd(1.0f);
@@ -178,7 +328,11 @@ int main(void) {
     temp_tri[i].pt3.z = 0;
   }
 
-  //HANDLE_ERROR(cudaMemcpyToSymbol(s, temp_s, sizeof(Sphere) * SPHERES));
+  for (int i = 0; i < LIGHTS; i++) {
+    lights_array[i].position = temp_scene->view.eye;
+  }
+
+  HANDLE_ERROR(cudaMemcpyToSymbol(scene, temp_scene, sizeof(scene_s)));
   HANDLE_ERROR(cudaMemcpyToSymbol(t, temp_tri, sizeof(Triangle) * TRIANGLES));
   free(temp_tri);
 
