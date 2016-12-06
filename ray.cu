@@ -17,6 +17,7 @@
 #include "cpu_bitmap.h"
 #include "timer.h"
 #include <cuda.h>
+#include <cmath>
 
 #define DIM 1024
 
@@ -24,6 +25,10 @@
 #define INF 2e10f
 #define TRIANGLES 1
 #define LIGHTS 1
+
+
+
+
 
 struct vec3 {
   float x, y, z;
@@ -37,6 +42,10 @@ struct vec3 {
     result.z = (x*p.y - p.x*y);
 
     return result;
+  }
+  __device__ vec3 normalized(){
+    float length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2) );
+    return vec3(x/length, y/length, z/length);
   }
 };
 
@@ -67,16 +76,26 @@ __device__ vec3 operator*(const vec3 &p, const float scale) {
   vec3 result = vec3(p.x * scale, p.y * scale, p.z * scale);
   return result;
 }
-
+__device__ vec3 operator*(const float scale, const vec3 &p) {
+  vec3 result = vec3(p.x * scale, p.y * scale, p.z * scale);
+  return result;
+}
 __device__ vec3 operator/(const vec3 &p, const float scale) {
   vec3 result = vec3(p.x / scale, p.y / scale, p.z / scale);
   return result;
 }
 
+
+
 struct Ray {
   vec3 origin;
   vec3 direction;
+  __device__ vec3 pointAtTime(float t){
+    return origin + t*direction;
+  }
 };
+
+
 
 struct Light {
   vec3 position;
@@ -126,6 +145,10 @@ struct Triangle {
     return t;
 
   }
+  __device__ vec3 normal(){
+    return (pt2 - pt1).crossProduct(pt3 - pt1).normalized();
+
+  }
 };
 
 struct view_s {
@@ -154,11 +177,32 @@ struct Hit {
   int shapeID;
 };
 
-__constant__ Triangle t[TRIANGLES];
+__constant__ Triangle triangles[TRIANGLES];
 __constant__ Light l[LIGHTS];
 __constant__ scene_s scene;
 
 
+
+__device__ vec3 convertColor(vec3 color) {
+  float cmax = color.x;
+  vec3 scaled;
+
+  if (color.y > cmax) { cmax = color.y; }
+  if (color.z > cmax) { cmax = color.z; }
+  if (cmax > 1) {
+    scaled = color / cmax;
+  }
+  else {
+    scaled = color;
+  }
+
+  vec3 result;
+  result.x = (int)(255 * scaled.x);
+  result.y = (int)(255 * scaled.y);
+  result.z = (int)(255 * scaled.z);
+
+  return result;
+}
 
 __device__ vec3 convertToWorld(int col, int row) {
   float pixelwidth = float(scene.view.horiz.x)/scene.view.ncols;
@@ -188,7 +232,7 @@ __device__ Hit findClosest(Ray ray) {
   closest.time = 0;
 
   for (int i = 0; i < TRIANGLES; i++) {
-    float time = t[i].hit(ray);
+    float time = triangles[i].hit(ray);
     if (time > 0.001) {
       if (closest.shapeID == -1 || time < closest.time) {
         closest.shapeID = i;
@@ -200,13 +244,49 @@ __device__ Hit findClosest(Ray ray) {
   return closest;
 }
 
+__device__ bool isInShadow(Light L, Triangle tri, vec3 p){
+  Ray ray;
+  ray.origin = L.position;
+  ray.direction = p - L.position;
+  Hit closest = findClosest(ray);
+  float t = closest.time;
+  if (t != tri.hit(ray) || t == -1){
+    return true;
+  }
+  return false;
+
+}
+
+__device__ vec3 phong(Ray ray, Light L, Triangle triangle){
+
+  vec3 diffuse, specular;
+  float t = triangle.hit(ray);
+  vec3 p = ray.pointAtTime(t);
+  int alpha = 4;
+
+  vec3 l = (L.position - p).normalized();
+  vec3 n = triangle.normal();
+  diffuse = triangle.material.diffuse * fmax(l*n, 0.0);
+
+  vec3 r = (2*(l*n)*n - l).normalized();
+  vec3 v = (-1*ray.direction).normalized();
+  specular = triangle.material.specular * pow(fmax(r*v, 0.0), alpha);
+
+  return L.intensity * (diffuse + specular);
+}
+
 __device__ vec3 doLighting(Ray ray, Triangle triangle) {
 
   vec3 color = scene.ambient * triangle.material.ambient;
 
   for (int i = 0; i < LIGHTS; i++) {
-    Light L = lights_array[i];
+    Light L = l[i];
+    vec3 p = ray.pointAtTime(triangle.hit(ray));
+    if (!isInShadow(L, triangle, p)) {
+      color = color + phong(ray, L, triangle);
+    }
   }
+  return convertColor(color);
 }
 
 __device__ vec3 traceRay(Ray ray) {
@@ -216,43 +296,21 @@ __device__ vec3 traceRay(Ray ray) {
   vec3 color = convertColor(background);
 
   if (closest.shapeID != -1) {
-    color = doLighting(ray, t[closest.shapeID]);
+    color = doLighting(ray, triangles[closest.shapeID]);
   }
 
   return color;
 }
 
-_
 
-__device__ vec3 convertColor(vec3 color) {
-  float cmax = color.x;
-  vec3 scaled;
-  int r, g, b;
-
-  if (color.y > cmax) { cmax = color.y; }
-  if (color.z > cmax) { cmax = color.z; }
-  if (cmax > 1) {
-    scaled = color / cmax;
-  }
-  else {
-    scaled = color;
-  }
-
-  vec3 result;
-  result.x = (int)(255 * scaled.x);
-  result.y = (int)(255 * scaled.y);
-  result.z = (int)(255 * scaled.z);
-
-  return result;
-}
 
 __global__ void kernel(unsigned char *ptr) {
   // map from threadIdx/BlockIdx to pixel position
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   int offset = x + y * blockDim.x * gridDim.x;
-  float ox = (x - DIM / 2);
-  float oy = (y - DIM / 2);
+  // float ox = (x - DIM / 2);
+  // float oy = (y - DIM / 2);
 
   Ray ray = makeRay(x, y);
   vec3 color =  traceRay(ray);
@@ -330,11 +388,15 @@ int main(void) {
 
   for (int i = 0; i < LIGHTS; i++) {
     lights_array[i].position = temp_scene->view.eye;
+    lights_array[i].intensity = 1;
   }
 
   HANDLE_ERROR(cudaMemcpyToSymbol(scene, temp_scene, sizeof(scene_s)));
-  HANDLE_ERROR(cudaMemcpyToSymbol(t, temp_tri, sizeof(Triangle) * TRIANGLES));
+  HANDLE_ERROR(cudaMemcpyToSymbol(triangles, temp_tri, sizeof(Triangle) * TRIANGLES));
+  HANDLE_ERROR(cudaMemcpyToSymbol(l, lights_array, sizeof(Light) * LIGHTS));
+  free(lights_array);
   free(temp_tri);
+  free(temp_scene);
 
   // generate a bitmap from our sphere data
   dim3 grids(DIM / 16, DIM / 16);
