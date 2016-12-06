@@ -26,10 +26,6 @@
 #define TRIANGLES 1
 #define LIGHTS 1
 
-
-
-
-
 struct vec3 {
   float x, y, z;
   __device__ vec3 () {}
@@ -44,7 +40,7 @@ struct vec3 {
     return result;
   }
   __device__ vec3 normalized(){
-    float length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2) );
+    float length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
     return vec3(x/length, y/length, z/length);
   }
 };
@@ -85,8 +81,6 @@ __device__ vec3 operator/(const vec3 &p, const float scale) {
   return result;
 }
 
-
-
 struct Ray {
   vec3 origin;
   vec3 direction;
@@ -94,8 +88,6 @@ struct Ray {
     return origin + t*direction;
   }
 };
-
-
 
 struct Light {
   vec3 position;
@@ -120,12 +112,12 @@ struct Triangle {
     float dot = cross * normal;
 
     return dot < 0;
-
   }
-  __device__ bool contains(vec3 q) {
 
+  __device__ bool contains(vec3 q) {
     return (leftOf(pt2, pt1, q) && leftOf(pt3, pt2, q) && leftOf(pt1, pt3, q));
   }
+
   __device__ float hit(Ray ray) {
 
     vec3 normal = (pt2 - pt1).crossProduct(pt3 - pt1);
@@ -147,7 +139,6 @@ struct Triangle {
   }
   __device__ vec3 normal(){
     return (pt2 - pt1).crossProduct(pt3 - pt1).normalized();
-
   }
 };
 
@@ -181,8 +172,6 @@ __constant__ Triangle triangles[TRIANGLES];
 __constant__ Light l[LIGHTS];
 __constant__ scene_s scene;
 
-
-
 __device__ vec3 convertColor(vec3 color) {
   float cmax = color.x;
   vec3 scaled;
@@ -197,9 +186,9 @@ __device__ vec3 convertColor(vec3 color) {
   }
 
   vec3 result;
-  result.x = (int)(255 * scaled.x);
-  result.y = (int)(255 * scaled.y);
-  result.z = (int)(255 * scaled.z);
+  result.x = (int)(233 * scaled.x);
+  result.y = (int)(233 * scaled.y);
+  result.z = (int)(233 * scaled.z);
 
   return result;
 }
@@ -273,6 +262,7 @@ __device__ vec3 phong(Ray ray, Light L, Triangle triangle){
   specular = triangle.material.specular * pow(fmax(r*v, 0.0), alpha);
 
   return L.intensity * (diffuse + specular);
+
 }
 
 __device__ vec3 doLighting(Ray ray, Triangle triangle) {
@@ -297,12 +287,11 @@ __device__ vec3 traceRay(Ray ray) {
 
   if (closest.shapeID != -1) {
     color = doLighting(ray, triangles[closest.shapeID]);
+    //color = vec3(0, 0, 1);
   }
 
   return color;
 }
-
-
 
 __global__ void kernel(unsigned char *ptr) {
   // map from threadIdx/BlockIdx to pixel position
@@ -318,7 +307,7 @@ __global__ void kernel(unsigned char *ptr) {
   ptr[offset * 4 + 0] = (int)(color.x);
   ptr[offset * 4 + 1] = (int)(color.y);
   ptr[offset * 4 + 2] = (int)(color.z);
-  ptr[offset * 4 + 3] = 255;
+  ptr[offset * 4 + 3] = 233;
 }
 
 // globals needed by the update routine
@@ -345,15 +334,15 @@ int main(void) {
 
   temp_scene->view.eye.x = 0;
   temp_scene->view.eye.y = 0;
-  temp_scene->view.eye.z = 15;
+  temp_scene->view.eye.z = 13;
 
-  temp_scene->view.origin.x = -5;
-  temp_scene->view.origin.y = -5;
+  temp_scene->view.origin.x = -3;
+  temp_scene->view.origin.y = -3;
   temp_scene->view.origin.z = 8;
 
-  temp_scene->view.horiz.x = 0;
+  temp_scene->view.horiz.x = 10;
   temp_scene->view.horiz.y = 0;
-  temp_scene->view.horiz.z = 10;
+  temp_scene->view.horiz.z = 0;
 
   temp_scene->view.vert.x = 0;
   temp_scene->view.vert.y = 10;
@@ -373,17 +362,32 @@ int main(void) {
     temp_tri[i].g = rnd(1.0f);
     temp_tri[i].b = rnd(1.0f);
 
-    temp_tri[i].pt1.x = -250;
-    temp_tri[i].pt1.y = -250;
+    temp_tri[i].pt1.x = -1;
+    temp_tri[i].pt1.y = -1;
     temp_tri[i].pt1.z = 0;
 
-    temp_tri[i].pt2.x = 250;
-    temp_tri[i].pt2.y = -250;
+    temp_tri[i].pt2.x = 1;
+    temp_tri[i].pt2.y = -1;
     temp_tri[i].pt2.z = 0;
 
     temp_tri[i].pt3.x = 0;
-    temp_tri[i].pt3.y = 250;
+    temp_tri[i].pt3.y = 1;
     temp_tri[i].pt3.z = 0;
+
+    Material material;
+    material.ambient.x = 0;
+    material.ambient.y = 0;
+    material.ambient.z = 1;
+
+    material.diffuse.x = 0;
+    material.diffuse.y = 0;
+    material.diffuse.z = 1;
+
+    material.specular.x = 1;
+    material.specular.y = 1;
+    material.specular.z = 1;
+
+    temp_tri[i].material = material;
   }
 
   for (int i = 0; i < LIGHTS; i++) {
