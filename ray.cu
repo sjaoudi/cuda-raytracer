@@ -127,8 +127,7 @@ struct Triangle {
 
     float t = (normal * (pt1 - o)) / (d * normal);
 
-    vec3 direction = vec3(0, 0, -t);
-    vec3 p = o + direction;
+    vec3 p = ray.pointAtTime(t);
 
     if (!contains(p)) {
       return -INF;
@@ -196,11 +195,9 @@ __device__ vec3 convertColor(vec3 color) {
 __device__ vec3 convertToWorld(int col, int row) {
   float pixelwidth = float(scene.view.horiz.x)/scene.view.ncols;
   float pixelheight = float(scene.view.vert.y)/scene.view.nrows;
-  // float pixelwidth = float(10)/m_scene.view.ncols;
-  // float pixelheight = float(10)/m_scene.view.nrows;
 
   float worldx = scene.view.origin.x + col*pixelwidth;
-  float worldy = -scene.view.origin.y - row*pixelheight;
+  float worldy = scene.view.origin.y + row*pixelheight;
   float worldz = scene.view.origin.z;
 
   return vec3(worldx, worldy, worldz);
@@ -221,11 +218,11 @@ __device__ Hit findClosest(Ray ray) {
   closest.time = 0;
 
   for (int i = 0; i < TRIANGLES; i++) {
-    float time = triangles[i].hit(ray);
-    if (time > 0.001) {
-      if (closest.shapeID == -1 || time < closest.time) {
+    float t = triangles[i].hit(ray);
+    if (t > 0.001) {
+      if (closest.shapeID == -1 || t < closest.time) {
         closest.shapeID = i;
-        closest.time = time;
+        closest.time = t;
       }
     }
   }
@@ -284,30 +281,36 @@ __device__ vec3 traceRay(Ray ray) {
   vec3 background = scene.view.background;
 
   vec3 color = convertColor(background);
-
+  //color = vec3(255, 255, 255);
   if (closest.shapeID != -1) {
     color = doLighting(ray, triangles[closest.shapeID]);
-    //color = vec3(0, 0, 1);
   }
 
   return color;
 }
 
 __global__ void kernel(unsigned char *ptr) {
-  // map from threadIdx/BlockIdx to pixel position
-  int x = threadIdx.x + blockIdx.x * blockDim.x;
+
   int y = threadIdx.y + blockIdx.y * blockDim.y;
-  int offset = x + y * blockDim.x * gridDim.x;
-  // float ox = (x - DIM / 2);
-  // float oy = (y - DIM / 2);
+  while (y < scene.view.nrows) {
+    int x = threadIdx.x + blockIdx.x * blockDim.x;
+    while (x < scene.view.ncols) {
+      Ray ray = makeRay(x, y);
+      vec3 color =  traceRay(ray);
 
-  Ray ray = makeRay(x, y);
-  vec3 color =  traceRay(ray);
+      // map from threadIdx/BlockIdx to pixel position
+      //int offset = x + y * blockDim.x * gridDim.x;
+      int offset = x + y * scene.view.ncols;
 
-  ptr[offset * 4 + 0] = (int)(color.x);
-  ptr[offset * 4 + 1] = (int)(color.y);
-  ptr[offset * 4 + 2] = (int)(color.z);
-  ptr[offset * 4 + 3] = 233;
+      ptr[offset * 4 + 0] = (int)(color.x);
+      ptr[offset * 4 + 1] = (int)(color.y);
+      ptr[offset * 4 + 2] = (int)(color.z);
+      ptr[offset * 4 + 3] = 233;
+
+      x += gridDim.x * blockDim.x;
+    }
+    y += gridDim.y * blockDim.y;
+  }
 }
 
 // globals needed by the update routine
@@ -336,8 +339,8 @@ int main(void) {
   temp_scene->view.eye.y = 0;
   temp_scene->view.eye.z = 13;
 
-  temp_scene->view.origin.x = -3;
-  temp_scene->view.origin.y = -3;
+  temp_scene->view.origin.x = -5;
+  temp_scene->view.origin.y = -5;
   temp_scene->view.origin.z = 8;
 
   temp_scene->view.horiz.x = 10;
@@ -362,16 +365,16 @@ int main(void) {
     temp_tri[i].g = rnd(1.0f);
     temp_tri[i].b = rnd(1.0f);
 
-    temp_tri[i].pt1.x = -1;
-    temp_tri[i].pt1.y = -1;
+    temp_tri[i].pt1.x = -5;
+    temp_tri[i].pt1.y = -5;
     temp_tri[i].pt1.z = 0;
 
-    temp_tri[i].pt2.x = 1;
-    temp_tri[i].pt2.y = -1;
+    temp_tri[i].pt2.x = 5;
+    temp_tri[i].pt2.y = -5;
     temp_tri[i].pt2.z = 0;
 
     temp_tri[i].pt3.x = 0;
-    temp_tri[i].pt3.y = 1;
+    temp_tri[i].pt3.y = 5;
     temp_tri[i].pt3.z = 0;
 
     Material material;
