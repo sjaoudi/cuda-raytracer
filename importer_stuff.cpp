@@ -18,9 +18,10 @@ vector<Triangle> DoTheImportThing( const std::string& pFile)
   const aiScene* scene = importer.ReadFile( pFile,
         aiProcess_Triangulate            |
         aiProcess_JoinIdenticalVertices  |
-        aiProcess_SortByPType);
+        aiProcess_SortByPType
+      );
 
-  std::vector<float*> vertices;
+  std::vector<std::vector<float>> vertices;
   vector<Triangle> tris;
   // If the import failed, report it
   if( !scene)
@@ -34,20 +35,28 @@ vector<Triangle> DoTheImportThing( const std::string& pFile)
 
 
   // Initialize the meshes in the scene one by one
-  for (unsigned int i = 0 ; i < scene->mNumMeshes; i++) {
+  for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
     const aiMesh* paiMesh = scene->mMeshes[i];
-    for (unsigned int i = 0 ; i < paiMesh->mNumVertices ; i++) {
-      const aiVector3D* pPos = &(paiMesh->mVertices[i]);
-      float v[3];
-      v[0] = pPos->x;
-      v[1] = pPos->y;
-      v[2] = pPos->z;
+    for (unsigned int j = 0; j < paiMesh->mNumVertices; j++) {
+      const aiVector3D* pPos = &(paiMesh->mVertices[j]);
+      //float v[3];
+      //v[0] = pPos->x;
+      //v[1] = pPos->y;
+      //v[2] = pPos->z;
+      std::vector<float> vertex;
+      vertex.push_back(pPos->x);
+      vertex.push_back(pPos->y);
+      vertex.push_back(pPos->z);
 
-      // printf("(%f, %f, %f)\n", v[0], v[1], v[2]);
+      //printf("(%f, %f, %f)\n", v[0], v[1], v[2]);
 
-      vertices.push_back(v);
+      vertices.push_back(vertex);
     }
   }
+
+  //for (unsigned int i = 0; i < vertices.size(); i++) {
+  //  printf("(%f, %f, %f)\n", vertices[i][0], vertices[i][1], vertices[i][2]);
+  //}
 
   for (unsigned int i = 0; i < vertices.size()-2; i += 3){
     Triangle tri = makeTriangle(vertices[i], vertices[i+1], vertices[i+2]);

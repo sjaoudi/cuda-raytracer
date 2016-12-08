@@ -24,11 +24,8 @@
 #define DIM 1024
 
 #define rnd(x) (x * rand() / RAND_MAX)
-#define TRIANGLES 1
 #define LIGHTS 1
 
-
-__constant__ Triangle triangles[TRIANGLES];
 __constant__ Light l[LIGHTS];
 __constant__ scene_s scene;
 
@@ -73,12 +70,13 @@ __device__ Ray makeRay(int col, int row) {
   return ray;
 }
 
-__device__ Hit findClosest(Ray ray) {
+__device__ Hit findClosest(Ray ray, Triangle* triangles, int count) {
   Hit closest;
   closest.shapeID = -1;
   closest.time = 0;
 
-  for (int i = 0; i < TRIANGLES; i++) {
+  for (int i = 0; i < count; i++) {
+    //float t = triangles_const[i].hit(ray);
     float t = triangles[i].hit(ray);
     if (t > 0.001) {
       if (closest.shapeID == -1 || t < closest.time) {
@@ -91,11 +89,11 @@ __device__ Hit findClosest(Ray ray) {
   return closest;
 }
 
-__device__ bool isInShadow(Light L, Triangle tri, vec3 p){
+__device__ bool isInShadow(Light L, Triangle tri, vec3 p, Triangle* triangles, int count){
   Ray ray;
   ray.origin = L.position;
   ray.direction = p - L.position;
-  Hit closest = findClosest(ray);
+  Hit closest = findClosest(ray, triangles, count);
   float t = closest.time;
   if (t != tri.hit(ray) || t == -1){
     return true;
@@ -123,41 +121,41 @@ __device__ vec3 phong(Ray ray, Light L, Triangle triangle){
 
 }
 
-__device__ vec3 doLighting(Ray ray, Triangle triangle) {
+__device__ vec3 doLighting(Ray ray, Triangle triangle, Triangle* triangles, int count) {
 
   vec3 color = scene.ambient * triangle.material.ambient;
 
   for (int i = 0; i < LIGHTS; i++) {
     Light L = l[i];
     vec3 p = ray.pointAtTime(triangle.hit(ray));
-    if (!isInShadow(L, triangle, p)) {
+    if (!isInShadow(L, triangle, p, triangles, count)) {
       color = color + phong(ray, L, triangle);
     }
   }
   return convertColor(color);
 }
 
-__device__ vec3 traceRay(Ray ray) {
-  Hit closest = findClosest(ray);
+__device__ vec3 traceRay(Ray ray, Triangle* triangles, int count) {
+  Hit closest = findClosest(ray, triangles, count);
   vec3 background = scene.view.background;
 
   vec3 color = convertColor(background);
-  //color = vec3(255, 255, 255);
   if (closest.shapeID != -1) {
-    color = doLighting(ray, triangles[closest.shapeID]);
+    //color = doLighting(ray, triangles_const[closest.shapeID], triangles, count);
+    color = doLighting(ray, triangles[closest.shapeID], triangles, count);
   }
 
   return color;
 }
 
-__global__ void kernel(unsigned char *ptr) {
+__global__ void kernel(unsigned char *ptr, Triangle* triangles, int count) {
 
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   while (y < scene.view.nrows) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     while (x < scene.view.ncols) {
       Ray ray = makeRay(x, y);
-      vec3 color =  traceRay(ray);
+      vec3 color =  traceRay(ray, triangles, count);
 
       // map from threadIdx/BlockIdx to pixel position
       //int offset = x + y * blockDim.x * gridDim.x;
@@ -188,17 +186,23 @@ int main(void) {
   CPUBitmap bitmap(DIM, DIM, &data);
   unsigned char *dev_bitmap;
 
+  Triangle *triangles;
+  std::vector<Triangle> model_triangles = DoTheImportThing("corgi.stl");
+  int count = model_triangles.size();
+  //int count = 1;
+
   // allocate memory on the GPU for the output bitmap
   HANDLE_ERROR(cudaMalloc((void **)&dev_bitmap, bitmap.image_size()));
+  HANDLE_ERROR(cudaMalloc((void **)&triangles, sizeof(Triangle) * count));
 
-  Triangle *temp_tri = (Triangle *)malloc(sizeof(Triangle) * TRIANGLES);
+  Triangle *temp_tri = (Triangle *)malloc(sizeof(Triangle) * count);
   Light *lights_array = (Light * )malloc(sizeof(Light) * LIGHTS);
 
   scene_s *temp_scene = new scene_s;
 
   temp_scene->view.eye.x = 0;
   temp_scene->view.eye.y = 0;
-  temp_scene->view.eye.z = 13;
+  temp_scene->view.eye.z = 20;
 
   temp_scene->view.origin.x = -5;
   temp_scene->view.origin.y = -5;
@@ -221,22 +225,29 @@ int main(void) {
 
   temp_scene->ambient = 0.1;
 
-  for (int i = 0; i < TRIANGLES; i++) {
-    temp_tri[i].r = rnd(1.0f);
-    temp_tri[i].g = rnd(1.0f);
-    temp_tri[i].b = rnd(1.0f);
+  for (int i = 0; i < count; i++) {
 
-    temp_tri[i].pt1.x = -5;
-    temp_tri[i].pt1.y = -5;
-    temp_tri[i].pt1.z = 0;
+    // temp_tri[i].pt1.x = -.2;
+    // temp_tri[i].pt1.y = -3.4;
+    // temp_tri[i].pt1.z = 5;
+    //
+    // temp_tri[i].pt2.x = -.21;
+    // temp_tri[i].pt2.y = -3.5;
+    // temp_tri[i].pt2.z = 5;
+    //
+    // temp_tri[i].pt3.x = -.14;
+    // temp_tri[i].pt3.y = -3.5;
+    // temp_tri[i].pt3.z = 5;
 
-    temp_tri[i].pt2.x = 5;
-    temp_tri[i].pt2.y = -5;
-    temp_tri[i].pt2.z = 0;
+    temp_tri[i] = model_triangles[i];
 
-    temp_tri[i].pt3.x = 0;
-    temp_tri[i].pt3.y = 5;
-    temp_tri[i].pt3.z = 0;
+    //temp_tri[i].r = rnd(1.0f);
+    //temp_tri[i].g = rnd(1.0f);
+    //temp_tri[i].b = rnd(1.0f);
+    //temp_tri[i].r = 0;
+    //temp_tri[i].g = 0;
+    //temp_tri[i].b = 1;
+
 
     Material material;
     material.ambient.x = 0;
@@ -260,8 +271,11 @@ int main(void) {
   }
 
   HANDLE_ERROR(cudaMemcpyToSymbol(scene, temp_scene, sizeof(scene_s)));
-  HANDLE_ERROR(cudaMemcpyToSymbol(triangles, temp_tri, sizeof(Triangle) * TRIANGLES));
+  //HANDLE_ERROR(cudaMemcpyToSymbol(triangles_const, temp_tri, sizeof(Triangle) * count));
   HANDLE_ERROR(cudaMemcpyToSymbol(l, lights_array, sizeof(Light) * LIGHTS));
+
+  HANDLE_ERROR(cudaMemcpy(triangles, temp_tri, sizeof(Triangle) * count, cudaMemcpyHostToDevice));
+
   free(lights_array);
   free(temp_tri);
   free(temp_scene);
@@ -269,17 +283,16 @@ int main(void) {
   // generate a bitmap from our sphere data
   dim3 grids(DIM / 16, DIM / 16);
   dim3 threads(16, 16);
-  kernel<<<grids, threads>>>(dev_bitmap);
-
+  kernel<<<grids, threads>>>(dev_bitmap, triangles, count);
   // copy our bitmap back from the GPU for display
-  HANDLE_ERROR(cudaMemcpy(bitmap.get_ptr(), dev_bitmap, bitmap.image_size(),
-                          cudaMemcpyDeviceToHost));
+  HANDLE_ERROR(cudaMemcpy(bitmap.get_ptr(), dev_bitmap, bitmap.image_size(), cudaMemcpyDeviceToHost));
 
   // get stop time, and display the timing results
   watch.stop();
   printf("Time to generate:  %3.1f ms\n", watch.elapsed());
 
   HANDLE_ERROR(cudaFree(dev_bitmap));
+  HANDLE_ERROR(cudaFree(triangles));
 
   // display
   bitmap.display_and_exit(NULL);

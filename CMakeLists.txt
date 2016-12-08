@@ -97,6 +97,12 @@ endforeach()
 #  mypanelopengl.cpp
 #)
 
+#normal source files
+set(SRC
+  importer_stuff.cpp
+  constructors.cpp
+)
+
 #set(SHADERS
 #  vshader.glsl
 #  fshader.glsl
@@ -106,6 +112,6 @@ endforeach()
 
 #TARGET_LINK_LIBRARIES(interop ${EXT_LIBS} libcommon mycuda
 #  Qt5::Core Qt5::Gui Qt5::OpenGL)
-TARGET_LINK_LIBRARIES(${EXT_LIBS} mycuda)
+TARGET_LINK_LIBRARIES(${EXT_LIBS} mycuda -lassimp)
 
 symlink_data(interop_shaders *.glsl)
