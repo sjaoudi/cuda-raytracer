@@ -281,8 +281,8 @@ int main(void) {
   free(temp_scene);
 
   // generate a bitmap from our sphere data
-  dim3 grids(DIM / 16, DIM / 16);
-  dim3 threads(16, 16);
+  dim3 grids(4, 4);
+  dim3 threads(64, 64);
   kernel<<<grids, threads>>>(dev_bitmap, triangles, count);
   // copy our bitmap back from the GPU for display
   HANDLE_ERROR(cudaMemcpy(bitmap.get_ptr(), dev_bitmap, bitmap.image_size(), cudaMemcpyDeviceToHost));
