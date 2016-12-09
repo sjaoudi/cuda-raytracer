@@ -34,23 +34,22 @@ vector<Triangle> DoTheImportThing( const std::string& pFile)
 
 
 
-  // Initialize the meshes in the scene one by one
+
+
   for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
-    const aiMesh* paiMesh = scene->mMeshes[i];
-    for (unsigned int j = 0; j < paiMesh->mNumVertices; j++) {
-      const aiVector3D* pPos = &(paiMesh->mVertices[j]);
-      //float v[3];
-      //v[0] = pPos->x;
-      //v[1] = pPos->y;
-      //v[2] = pPos->z;
-      std::vector<float> vertex;
-      vertex.push_back(pPos->x);
-      vertex.push_back(pPos->y);
-      vertex.push_back(pPos->z);
+    aiMesh* mesh = scene->mMeshes[i];
+    for (unsigned int j = 0; j < mesh->mNumFaces; j++){
+      const aiFace& face = mesh->mFaces[j];
+      for (int k = 0; k < 3; k++){
+        aiVector3D pos = mesh->mVertices[face.mIndices[k]];
+        std::vector<float> vertex;
+        vertex.push_back(pos.x);
+        vertex.push_back(pos.y);
+        vertex.push_back(pos.z);
+        vertices.push_back(vertex);
+      }
 
-      //printf("(%f, %f, %f)\n", v[0], v[1], v[2]);
 
-      vertices.push_back(vertex);
     }
   }
 

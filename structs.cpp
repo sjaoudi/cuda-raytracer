@@ -113,6 +113,8 @@ struct Triangle {
   __device__ vec3 normal(){
     return (pt2 - pt1).crossProduct(pt3 - pt1).normalized();
   }
+
+  
 };
 
 struct view_s {
