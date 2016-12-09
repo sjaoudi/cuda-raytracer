@@ -24,7 +24,7 @@
 #define DIM 1024
 
 #define rnd(x) (x * rand() / RAND_MAX)
-#define LIGHTS 1
+#define LIGHTS 3
 
 __constant__ Light l[LIGHTS];
 __constant__ scene_s scene;
@@ -265,10 +265,19 @@ int main(void) {
     temp_tri[i].material = material;
   }
 
-  for (int i = 0; i < LIGHTS; i++) {
-    lights_array[i].position = temp_scene->view.eye;
-    lights_array[i].intensity = 1;
-  }
+
+  lights_array[0].position = temp_scene->view.eye;
+  lights_array[0].intensity = 1;
+  lights_array[1].position.x = 5;
+  lights_array[1].position.y = 0;
+  lights_array[1].position.z = 5;
+  lights_array[1].intensity = 1;
+  lights_array[2].position.x = -5;
+  lights_array[2].position.y = 0;
+  lights_array[2].position.z = 5;
+  lights_array[2].intensity = 1;
+
+
 
   HANDLE_ERROR(cudaMemcpyToSymbol(scene, temp_scene, sizeof(scene_s)));
   //HANDLE_ERROR(cudaMemcpyToSymbol(triangles_const, temp_tri, sizeof(Triangle) * count));
@@ -281,8 +290,8 @@ int main(void) {
   free(temp_scene);
 
   // generate a bitmap from our sphere data
-  dim3 grids(4, 4);
-  dim3 threads(64, 64);
+  dim3 grids(32, 32);
+  dim3 threads(32, 32);
   kernel<<<grids, threads>>>(dev_bitmap, triangles, count);
   // copy our bitmap back from the GPU for display
   HANDLE_ERROR(cudaMemcpy(bitmap.get_ptr(), dev_bitmap, bitmap.image_size(), cudaMemcpyDeviceToHost));

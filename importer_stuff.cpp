@@ -44,8 +44,8 @@ vector<Triangle> DoTheImportThing( const std::string& pFile)
         aiVector3D pos = mesh->mVertices[face.mIndices[k]];
         std::vector<float> vertex;
         vertex.push_back(pos.x);
-        vertex.push_back(pos.y);
-        vertex.push_back(pos.z);
+        vertex.push_back(pos.z - 3);
+        vertex.push_back(-pos.y);
         vertices.push_back(vertex);
       }
 
