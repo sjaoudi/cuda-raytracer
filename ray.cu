@@ -184,7 +184,7 @@ int main(void) {
   scene_s *temp_scene = new scene_s;
 
   Triangle *triangles;
-  std::vector<Triangle> model_triangles = DoTheImportThing("kangarphin.stl", temp_scene);
+  std::vector<Triangle> model_triangles = DoTheImportThing("corgi.stl", temp_scene);
   int count = model_triangles.size();
 
   // allocate memory on the GPU for the output bitmap

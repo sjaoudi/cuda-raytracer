@@ -30,7 +30,7 @@ vector<Triangle> DoTheImportThing( const std::string& pFile, scene_s *temp_scene
     return tris;
   }
   // Now we can access the file's contents.
-  // printf("Yay! it worked\n");
+  printf("Yay! it worked\n");
 
   for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
     aiMesh* mesh = scene->mMeshes[i];
@@ -39,9 +39,15 @@ vector<Triangle> DoTheImportThing( const std::string& pFile, scene_s *temp_scene
       for (int k = 0; k < 3; k++){
         aiVector3D pos = mesh->mVertices[face.mIndices[k]];
         std::vector<float> vertex;
-        vertex.push_back(pos.y);
-        vertex.push_back(pos.z);
+        // vertex.push_back(pos.y);
+        // vertex.push_back(pos.z);
+        // vertex.push_back(pos.x);
+
         vertex.push_back(pos.x);
+        vertex.push_back(pos.z);
+        vertex.push_back(-pos.y);
+
+
         vertices.push_back(vertex);
       }
     }
@@ -108,13 +114,12 @@ vector<Triangle> DoTheImportThing( const std::string& pFile, scene_s *temp_scene
 
   for (unsigned int i = 0; i < vertices.size()-2; i += 3){
     Triangle tri = makeTriangle(vertices[i], vertices[i+1], vertices[i+2]);
-    printf("triangle %f %f %f %f %f %f %f %f %f\n", vertices[i][0], vertices[i][1], vertices[i][2],
-                                                    vertices[i+1][0], vertices[i+1][1], vertices[i+1][2],
-                                                    vertices[i+2][0], vertices[i+2][1], vertices[i+2][2]);
+    //printf("triangle %f %f %f %f %f %f %f %f %f\n", vertices[i][0], vertices[i][1], vertices[i][2],
+    //                                                vertices[i+1][0], vertices[i+1][1], vertices[i+1][2],
+    //                                                vertices[i+2][0], vertices[i+2][1], vertices[i+2][2]);
     tris.push_back(tri);
   }
 
-  exit(1);
   //printf("number of triangles: %d\n", tris.size());
   return tris;
 
