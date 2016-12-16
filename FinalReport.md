@@ -50,15 +50,18 @@ from our midterm project.
 
 We successfully rendered three .stl models using our CUDA raytracer. We also piped the triangle data from
 these models into input files for our midterm project, which was a traditional CPU-raytracer. Therefore we can
-directly compare the preformance of our CUDA raytracer to that of our CPU raytracer. 
+directly compare the preformance of our CUDA raytracer to that of our CPU raytracer. Note that given data from
+the corgi and snowman, we did not bother raytracing the kangarphin or kangaroo on the CPU. 
 
 ### CPU
 | model | time (ms) |  #triangles |
 |--------|------| -----|
-| corgi.stl |  1573000 (26 min, 13s)   |   |
-| snowman.stl |    | 5558  |
-| kangarphin.stl | >36 hours | 200098 |
-| kang.stl |  >36 hours | 716044 |
+| corgi.stl |  1573000 (26 min, 13s)   |  3740 |
+| snowman.stl |  4260000 (71 min)  | 5558  |
+| kangarphin.stl | ?? | 200098 |
+| kang.stl |  ?? | 716044 |
+
+Based on the increase in time from the corgi to the snowman, we would expect the kangarphin and kangaroo to take many hours on the CPU.
 
 ### CUDA
 
