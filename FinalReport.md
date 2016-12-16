@@ -9,12 +9,12 @@ importer. We successfully created this project.
 
 First we describe the raytracer. The raytracer constructs a scene object (the same as in the midterm project) and 
 an array of lights (as described in the midterm) and triangles (a struct that we define). It passes this data to a CUDA
-kernal, which supports full two-dimensional block and thread parallelism.
+kernel, which supports full two-dimensional block and thread parallelism.
 
-Within the kernal we reimplemented the midterm raytracer, fully supporting phong lighting. To do this on the graphics card,
+Within the kernel we reimplemented the midterm raytracer, fully supporting phong lighting. To do this on the graphics card,
 we had to write our own structs for triangles, 3D vectors, Rays, Lights, Materials, Views, Scenes, and Hits (all contained
 in structs.cpp). We also
-implemented crossproduct, dot product, and vector normalization. 
+implemented cross product, dot product, and vector normalization. 
 
 With these building blocks, we reimplemented the hit() function in our triangle struct, including contains() and LeftOf().
 
