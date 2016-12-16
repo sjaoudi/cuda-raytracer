@@ -18,13 +18,11 @@
 #include "timer.h"
 #include <cuda.h>
 #include <cmath>
-
 #include "importer_stuff.cpp"
 
 #define DIM 1024
-
 #define rnd(x) (x * rand() / RAND_MAX)
-#define LIGHTS 3
+#define LIGHTS 4
 
 __constant__ Light l[LIGHTS];
 __constant__ scene_s scene;
@@ -76,7 +74,6 @@ __device__ Hit findClosest(Ray ray, Triangle* triangles, int count) {
   closest.time = 0;
 
   for (int i = 0; i < count; i++) {
-    //float t = triangles_const[i].hit(ray);
     float t = triangles[i].hit(ray);
     if (t > 0.001) {
       if (closest.shapeID == -1 || t < closest.time) {
@@ -141,7 +138,6 @@ __device__ vec3 traceRay(Ray ray, Triangle* triangles, int count) {
 
   vec3 color = convertColor(background);
   if (closest.shapeID != -1) {
-    //color = doLighting(ray, triangles_const[closest.shapeID], triangles, count);
     color = doLighting(ray, triangles[closest.shapeID], triangles, count);
   }
 
@@ -158,7 +154,6 @@ __global__ void kernel(unsigned char *ptr, Triangle* triangles, int count) {
       vec3 color =  traceRay(ray, triangles, count);
 
       // map from threadIdx/BlockIdx to pixel position
-      //int offset = x + y * blockDim.x * gridDim.x;
       int offset = x + y * scene.view.ncols;
 
       ptr[offset * 4 + 0] = (int)(color.x);
@@ -186,35 +181,34 @@ int main(void) {
   CPUBitmap bitmap(DIM, DIM, &data);
   unsigned char *dev_bitmap;
 
+  scene_s *temp_scene = new scene_s;
+
   Triangle *triangles;
-  std::vector<Triangle> model_triangles = DoTheImportThing("corgi.stl");
+  std::vector<Triangle> model_triangles = DoTheImportThing("kangarphin.stl", temp_scene);
   int count = model_triangles.size();
-  //int count = 1;
 
   // allocate memory on the GPU for the output bitmap
   HANDLE_ERROR(cudaMalloc((void **)&dev_bitmap, bitmap.image_size()));
   HANDLE_ERROR(cudaMalloc((void **)&triangles, sizeof(Triangle) * count));
 
   Triangle *temp_tri = (Triangle *)malloc(sizeof(Triangle) * count);
-  Light *lights_array = (Light * )malloc(sizeof(Light) * LIGHTS);
+  Light *temp_lights = (Light * )malloc(sizeof(Light) * LIGHTS);
 
-  scene_s *temp_scene = new scene_s;
-
-  temp_scene->view.eye.x = 0;
-  temp_scene->view.eye.y = 0;
-  temp_scene->view.eye.z = 20;
-
-  temp_scene->view.origin.x = -5;
-  temp_scene->view.origin.y = -5;
-  temp_scene->view.origin.z = 8;
-
-  temp_scene->view.horiz.x = 10;
-  temp_scene->view.horiz.y = 0;
-  temp_scene->view.horiz.z = 0;
-
-  temp_scene->view.vert.x = 0;
-  temp_scene->view.vert.y = 10;
-  temp_scene->view.vert.z = 0;
+  // temp_scene->view.eye.x = 0;
+  // temp_scene->view.eye.y = 0;
+  // temp_scene->view.eye.z = 20;
+  //
+  // temp_scene->view.origin.x = -5;
+  // temp_scene->view.origin.y = -2;
+  // temp_scene->view.origin.z = 8;
+  //
+  // temp_scene->view.horiz.x = 10;
+  // temp_scene->view.horiz.y = 0;
+  // temp_scene->view.horiz.z = 0;
+  //
+  // temp_scene->view.vert.x = 0;
+  // temp_scene->view.vert.y = 10;
+  // temp_scene->view.vert.z = 0;
 
   temp_scene->view.background.x = 0;
   temp_scene->view.background.y = 0;
@@ -227,27 +221,7 @@ int main(void) {
 
   for (int i = 0; i < count; i++) {
 
-    // temp_tri[i].pt1.x = -.2;
-    // temp_tri[i].pt1.y = -3.4;
-    // temp_tri[i].pt1.z = 5;
-    //
-    // temp_tri[i].pt2.x = -.21;
-    // temp_tri[i].pt2.y = -3.5;
-    // temp_tri[i].pt2.z = 5;
-    //
-    // temp_tri[i].pt3.x = -.14;
-    // temp_tri[i].pt3.y = -3.5;
-    // temp_tri[i].pt3.z = 5;
-
     temp_tri[i] = model_triangles[i];
-
-    //temp_tri[i].r = rnd(1.0f);
-    //temp_tri[i].g = rnd(1.0f);
-    //temp_tri[i].b = rnd(1.0f);
-    //temp_tri[i].r = 0;
-    //temp_tri[i].g = 0;
-    //temp_tri[i].b = 1;
-
 
     Material material;
     material.ambient.x = 0;
@@ -265,33 +239,35 @@ int main(void) {
     temp_tri[i].material = material;
   }
 
+  temp_lights[0].position = temp_scene->view.eye;
+  temp_lights[0].intensity = 1;
 
-  lights_array[0].position = temp_scene->view.eye;
-  lights_array[0].intensity = 1;
-  lights_array[1].position.x = 5;
-  lights_array[1].position.y = 0;
-  lights_array[1].position.z = 5;
-  lights_array[1].intensity = 1;
-  lights_array[2].position.x = -5;
-  lights_array[2].position.y = 0;
-  lights_array[2].position.z = 5;
-  lights_array[2].intensity = 1;
+  temp_lights[1].position.x = 5;
+  temp_lights[1].position.y = 0;
+  temp_lights[1].position.z = 5;
+  temp_lights[1].intensity = 1;
 
+  temp_lights[2].position.x = -5;
+  temp_lights[2].position.y = 0;
+  temp_lights[2].position.z = 5;
+  temp_lights[2].intensity = 1;
 
+  temp_lights[3].position.x = -10;
+  temp_lights[3].position.y = -10;
+  temp_lights[3].position.z = -10;
+  temp_lights[3].intensity = 1;
 
   HANDLE_ERROR(cudaMemcpyToSymbol(scene, temp_scene, sizeof(scene_s)));
-  //HANDLE_ERROR(cudaMemcpyToSymbol(triangles_const, temp_tri, sizeof(Triangle) * count));
-  HANDLE_ERROR(cudaMemcpyToSymbol(l, lights_array, sizeof(Light) * LIGHTS));
-
+  HANDLE_ERROR(cudaMemcpyToSymbol(l, temp_lights, sizeof(Light) * LIGHTS));
   HANDLE_ERROR(cudaMemcpy(triangles, temp_tri, sizeof(Triangle) * count, cudaMemcpyHostToDevice));
 
-  free(lights_array);
+  free(temp_lights);
   free(temp_tri);
   free(temp_scene);
 
   // generate a bitmap from our sphere data
   dim3 grids(32, 32);
-  dim3 threads(32, 32);
+  dim3 threads(25, 25);
   kernel<<<grids, threads>>>(dev_bitmap, triangles, count);
   // copy our bitmap back from the GPU for display
   HANDLE_ERROR(cudaMemcpy(bitmap.get_ptr(), dev_bitmap, bitmap.image_size(), cudaMemcpyDeviceToHost));

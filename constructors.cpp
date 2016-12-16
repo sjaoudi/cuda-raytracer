@@ -3,7 +3,6 @@
 
 
 using namespace std;
-//Triangle makeTriangle(float* p1, float* p2, float* p3){
 Triangle makeTriangle(std::vector<float> p1, std::vector<float> p2, std::vector<float> p3) {
   Triangle tri;
   tri.pt1.x = p1[0];
